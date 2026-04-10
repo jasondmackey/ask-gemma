@@ -17,9 +17,47 @@ from ollama import chat as ollama_chat
 
 # Allow running from any directory
 sys.path.insert(0, __file__.rsplit("/", 1)[0])
-from ask_gemma import get_location_info, get_system_prompt, get_weather
+from ask_gemma import get_location_info, get_system_prompt, get_weather, _get
 
 MODEL = "gemma4:31b"
+
+# ---------------------------------------------------------------------------
+# Browser GPS geolocation
+# ---------------------------------------------------------------------------
+
+_GEOLOCATION_JS = """
+async () => {
+    return new Promise(resolve => {
+        if (!navigator.geolocation) { resolve([null, null]); return; }
+        navigator.geolocation.getCurrentPosition(
+            p => resolve([p.coords.latitude, p.coords.longitude]),
+            () => resolve([null, null]),
+            { timeout: 10000, enableHighAccuracy: true }
+        );
+    });
+}
+"""
+
+
+def _reverse_geocode(lat, lon) -> str | None:
+    """Convert GPS coords to a city string via Nominatim (OpenStreetMap)."""
+    if lat is None or lon is None:
+        return None
+    try:
+        data = _get(
+            f"https://nominatim.openstreetmap.org/reverse"
+            f"?lat={lat}&lon={lon}&format=json&zoom=14"
+        )
+        addr = data.get("address", {})
+        city = (
+            addr.get("city") or addr.get("town") or addr.get("village")
+            or addr.get("suburb") or addr.get("neighbourhood") or ""
+        )
+        state   = addr.get("state", "")
+        country = addr.get("country_code", "").upper()
+        return ", ".join(p for p in (city, state, country) if p) or None
+    except Exception:
+        return None
 
 # File extensions treated as plain text
 TEXT_EXTENSIONS = {
@@ -32,17 +70,31 @@ TEXT_EXTENSIONS = {
 }
 
 
-def _session_header() -> str:
+def _session_header(loc_info: dict | None = None) -> str:
+    location_override = (loc_info or {}).get("name")
+    latlon_override   = None
+    if loc_info and loc_info.get("lat") is not None:
+        latlon_override = (str(loc_info["lat"]), str(loc_info["lon"]))
+
     location, timezone = get_location_info()
+    if location_override:
+        location = location_override
     tz = ZoneInfo(timezone)
     now = datetime.datetime.now(tz=tz)
-    weather = get_weather()
+    weather = get_weather(latlon=latlon_override)
     weather_part = f" &nbsp;·&nbsp; 🌤️ {weather}" if weather else ""
     return (
         f"**{now.strftime('%A, %B %d, %Y')}** &nbsp;·&nbsp; "
         f"**{now.strftime('%I:%M %p %Z')}** &nbsp;·&nbsp; "
         f"📍 {location}{weather_part}"
     )
+
+
+def _on_geolocation(lat, lon):
+    """Called on page load with browser GPS coords. Returns (location_state, header)."""
+    name = _reverse_geocode(lat, lon)
+    loc_info = {"name": name, "lat": lat, "lon": lon} if name else None
+    return loc_info, _session_header(loc_info)
 
 
 def _read_file(file) -> str:
@@ -94,9 +146,16 @@ def _format_response(thinking: str, response: str) -> str:
     return f"<details><summary>{label}</summary>\n\n{thinking}\n\n</details>\n\n{response}"
 
 
-def respond(message, history: list):
+def respond(message, history: list, loc_info: dict | None = None):
     """Stream a reply from Gemma with visible chain-of-thought thinking."""
-    messages = [{"role": "system", "content": get_system_prompt()}]
+    location_override = (loc_info or {}).get("name")
+    latlon_override   = None
+    if loc_info and loc_info.get("lat") is not None:
+        latlon_override = (str(loc_info["lat"]), str(loc_info["lon"]))
+    messages = [{"role": "system", "content": get_system_prompt(
+        location_override=location_override,
+        latlon_override=latlon_override,
+    )}]
     for turn in history:
         messages.append({"role": turn["role"], "content": _to_text(turn["content"])})
     messages.append({"role": "user", "content": _to_text(message)})
@@ -116,16 +175,32 @@ def respond(message, history: list):
 
 with gr.Blocks(title="Ask Gemma", fill_height=True) as demo:
     gr.Markdown("# 🦙 Ask Gemma")
-    session_info = gr.Markdown(_session_header())
+    session_info  = gr.Markdown(_session_header())
+    location_state = gr.State(None)  # set on load from browser GPS
     gr.Markdown(
         "_Attach `.txt`, `.md`, `.py`, `.json`, `.pdf` and more — "
         "file contents are sent to the model as context._",
     )
-    # Refresh the header every 60 seconds so the clock stays current
-    gr.Timer(value=60).tick(fn=_session_header, outputs=session_info)
+
+    # On page load: ask browser for GPS, reverse-geocode, update header + state
+    # inputs=[] tells Gradio the fn args come entirely from the JS return value
+    demo.load(
+        fn=_on_geolocation,
+        inputs=[],
+        outputs=[location_state, session_info],
+        js=_GEOLOCATION_JS,
+    )
+
+    # Refresh header every 60 s (passes current location state so it stays accurate)
+    gr.Timer(value=60).tick(
+        fn=_session_header,
+        inputs=[location_state],
+        outputs=session_info,
+    )
 
     gr.ChatInterface(
         fn=respond,
+        additional_inputs=[location_state],
         chatbot=gr.Chatbot(
             height=500,
             show_label=False,
@@ -143,11 +218,12 @@ with gr.Blocks(title="Ask Gemma", fill_height=True) as demo:
                         ".rb", ".swift", ".sql", ".log", ".pdf", ".prc"],
             submit_btn="Send",
         ),
+        # With additional_inputs, examples must be [[multimodal_msg, state_val], ...]
         examples=[
-            {"text": "What day of the week is it?", "files": []},
-            {"text": "How many days until the end of the month?", "files": []},
-            {"text": "What city am I in?", "files": []},
-            {"text": "What's the weather typically like here this time of year?", "files": []},
+            [{"text": "What day of the week is it?",                    "files": []}, None],
+            [{"text": "How many days until the end of the month?",      "files": []}, None],
+            [{"text": "What city am I in?",                              "files": []}, None],
+            [{"text": "What's the weather like here today?",             "files": []}, None],
         ],
     )
 

@@ -77,9 +77,9 @@ def get_location_info():
     return location or _FALLBACK_LOCATION, timezone
 
 
-def get_weather() -> str:
+def get_weather(latlon: tuple[str, str] | None = None) -> str:
     """Fetch current conditions + 2-day forecast from Open-Meteo (no API key)."""
-    coords = _get_latlon()
+    coords = latlon or _get_latlon()
     if not coords:
         return ""
     lat, lon = coords
@@ -116,12 +116,16 @@ def get_weather() -> str:
         return ""
 
 
-def get_system_prompt():
-    location, timezone = get_location_info()
+def get_system_prompt(
+    location_override: str | None = None,
+    latlon_override: tuple[str, str] | None = None,
+) -> str:
+    _, timezone = get_location_info()  # always use IP-based timezone
+    location = location_override or get_location_info()[0]
     tz = ZoneInfo(timezone)
     now = datetime.datetime.now(tz=tz)
     tz_name = now.strftime("%Z")  # e.g. "MDT" or "MST" automatically
-    weather = get_weather()
+    weather = get_weather(latlon=latlon_override)
     weather_line = f" {weather}" if weather else ""
     return (
         f"Today is {now.strftime('%A, %B %d, %Y')}. "
