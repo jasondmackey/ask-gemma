@@ -44,20 +44,33 @@ def ask(user_message: str) -> str:
     )
     return response.message.content
 
-if __name__ == "__main__":
-    # Verify location + timezone resolution before querying the model
+def chat_loop():
+    """Interactive chat with Gemma. Time, date, and location are injected at session start."""
     location, timezone = get_location_info()
     tz = ZoneInfo(timezone)
     now = datetime.datetime.now(tz=tz)
-    print(f"[context] Location: {location} | Timezone: {timezone} | Local time: {now.strftime('%I:%M %p %Z')}")
-    print()
+    print(f"[session] {now.strftime('%A, %B %d, %Y  %I:%M %p %Z')} — {location}")
+    print("Type 'exit' or press Ctrl+C to quit.\n")
 
-    questions = [
-        "What day of the week is it and what time is it?",
-        "How many days until the end of the month?",
-        "What city and country am I in right now?",
-    ]
-    for q in questions:
-        print(f"Q: {q}")
-        print(f"A: {ask(q)}")
-        print()
+    messages = [{"role": "system", "content": get_system_prompt()}]
+
+    while True:
+        try:
+            user_input = input("You: ").strip()
+        except (KeyboardInterrupt, EOFError):
+            print("\nGoodbye!")
+            break
+        if not user_input:
+            continue
+        if user_input.lower() in {"exit", "quit"}:
+            print("Goodbye!")
+            break
+
+        messages.append({"role": "user", "content": user_input})
+        response = chat(model="gemma4:31b", messages=messages)
+        reply = response.message.content
+        messages.append({"role": "assistant", "content": reply})
+        print(f"Gemma: {reply}\n")
+
+if __name__ == "__main__":
+    chat_loop()
