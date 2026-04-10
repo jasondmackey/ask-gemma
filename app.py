@@ -31,13 +31,19 @@ def _session_header() -> str:
     )
 
 
-def respond(message: str, history: list) -> str:
+def _to_text(content) -> str:
+    """Normalize Gradio 6 multimodal content (list of dicts) to a plain string."""
+    if isinstance(content, list):
+        return " ".join(p.get("text", "") for p in content if isinstance(p, dict))
+    return content or ""
+
+
+def respond(message, history: list):
     """Stream a reply from Gemma, maintaining full conversation history."""
-    # Build message list: system prompt + prior turns + new user message
     messages = [{"role": "system", "content": get_system_prompt()}]
     for turn in history:
-        messages.append({"role": turn["role"], "content": turn["content"]})
-    messages.append({"role": "user", "content": message})
+        messages.append({"role": turn["role"], "content": _to_text(turn["content"])})
+    messages.append({"role": "user", "content": _to_text(message)})
 
     stream = ollama_chat(model=MODEL, messages=messages, stream=True)
     partial = ""
