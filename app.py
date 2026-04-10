@@ -28,7 +28,7 @@ TEXT_EXTENSIONS = {
     ".htm", ".css", ".xml", ".sh", ".bash", ".zsh",
     ".go", ".rs", ".java", ".c", ".cpp", ".h", ".rb",
     ".swift", ".kt", ".r", ".sql", ".env", ".cfg", ".ini",
-    ".log", ".diff", ".patch",
+    ".log", ".diff", ".patch", ".prc",
 }
 
 
@@ -125,7 +125,7 @@ with gr.Blocks(title="Ask Gemma", fill_height=True) as demo:
             file_types=[".txt", ".md", ".py", ".js", ".ts", ".json",
                         ".yaml", ".yml", ".toml", ".csv", ".html", ".css",
                         ".xml", ".sh", ".go", ".rs", ".java", ".c", ".cpp",
-                        ".rb", ".swift", ".sql", ".log", ".pdf"],
+                        ".rb", ".swift", ".sql", ".log", ".pdf", ".prc"],
             submit_btn="Send",
         ),
         examples=[
