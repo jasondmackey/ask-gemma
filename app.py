@@ -27,14 +27,26 @@ MODEL = "gemma4:31b"
 
 _GEOLOCATION_JS = """
 async () => {
-    return new Promise(resolve => {
-        if (!navigator.geolocation) { resolve([null, null]); return; }
+    if (!navigator.geolocation) return [null, null];
+    const get = (opts) => new Promise(resolve =>
         navigator.geolocation.getCurrentPosition(
             p => resolve([p.coords.latitude, p.coords.longitude]),
             () => resolve([null, null]),
-            { timeout: 10000, enableHighAccuracy: true }
-        );
-    });
+            opts
+        )
+    );
+    // First try: fast network-based lookup (no GPS hardware needed)
+    const fast = await get({ enableHighAccuracy: false, timeout: 8000 });
+    if (fast[0] !== null) return fast;
+    // If already denied or unavailable, check permission state and wait if pending
+    if (navigator.permissions) {
+        const perm = await navigator.permissions.query({ name: 'geolocation' });
+        if (perm.state === 'prompt') {
+            // User hasn't decided yet — wait up to 30s for them to respond
+            return await get({ enableHighAccuracy: false, timeout: 30000 });
+        }
+    }
+    return [null, null];
 }
 """
 
