@@ -177,16 +177,18 @@ with gr.Blocks(title="Ask Gemma", fill_height=True) as demo:
     gr.Markdown("# 🦙 Ask Gemma")
     session_info  = gr.Markdown(_session_header())
     location_state = gr.State(None)  # set on load from browser GPS
+    _lat_state     = gr.State(None)  # temporary holders for JS → Python routing
+    _lon_state     = gr.State(None)
     gr.Markdown(
         "_Attach `.txt`, `.md`, `.py`, `.json`, `.pdf` and more — "
         "file contents are sent to the model as context._",
     )
 
-    # On page load: ask browser for GPS, reverse-geocode, update header + state
-    # inputs=[] tells Gradio the fn args come entirely from the JS return value
+    # On page load: JS gets GPS coords, Gradio routes them via the State placeholders
+    # into _on_geolocation(lat, lon) which returns the resolved location + header.
     demo.load(
         fn=_on_geolocation,
-        inputs=[],
+        inputs=[_lat_state, _lon_state],
         outputs=[location_state, session_info],
         js=_GEOLOCATION_JS,
     )
