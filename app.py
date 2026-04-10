@@ -17,7 +17,7 @@ from ollama import chat as ollama_chat
 
 # Allow running from any directory
 sys.path.insert(0, __file__.rsplit("/", 1)[0])
-from ask_gemma import get_location_info, get_system_prompt
+from ask_gemma import get_location_info, get_system_prompt, get_weather
 
 MODEL = "gemma4:31b"
 
@@ -36,10 +36,12 @@ def _session_header() -> str:
     location, timezone = get_location_info()
     tz = ZoneInfo(timezone)
     now = datetime.datetime.now(tz=tz)
+    weather = get_weather()
+    weather_part = f" &nbsp;·&nbsp; 🌤️ {weather}" if weather else ""
     return (
         f"**{now.strftime('%A, %B %d, %Y')}** &nbsp;·&nbsp; "
         f"**{now.strftime('%I:%M %p %Z')}** &nbsp;·&nbsp; "
-        f"📍 {location}"
+        f"📍 {location}{weather_part}"
     )
 
 
@@ -114,11 +116,13 @@ def respond(message, history: list):
 
 with gr.Blocks(title="Ask Gemma", fill_height=True) as demo:
     gr.Markdown("# 🦙 Ask Gemma")
-    gr.Markdown(_session_header())
+    session_info = gr.Markdown(_session_header())
     gr.Markdown(
         "_Attach `.txt`, `.md`, `.py`, `.json`, `.pdf` and more — "
         "file contents are sent to the model as context._",
     )
+    # Refresh the header every 60 seconds so the clock stays current
+    gr.Timer(value=60).tick(fn=_session_header, outputs=session_info)
 
     gr.ChatInterface(
         fn=respond,
