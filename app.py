@@ -84,18 +84,28 @@ def _to_text(content) -> str:
     return content or ""
 
 
+def _format_response(thinking: str, response: str) -> str:
+    """Wrap thinking in a collapsible block above the response."""
+    if not thinking:
+        return response
+    label = "💭 Thinking…" if not response else "💭 Thoughts"
+    return f"<details><summary>{label}</summary>\n\n{thinking}\n\n</details>\n\n{response}"
+
+
 def respond(message, history: list):
-    """Stream a reply from Gemma, maintaining full conversation history."""
+    """Stream a reply from Gemma with visible chain-of-thought thinking."""
     messages = [{"role": "system", "content": get_system_prompt()}]
     for turn in history:
         messages.append({"role": turn["role"], "content": _to_text(turn["content"])})
     messages.append({"role": "user", "content": _to_text(message)})
 
-    stream = ollama_chat(model=MODEL, messages=messages, stream=True)
-    partial = ""
+    stream = ollama_chat(model=MODEL, messages=messages, stream=True, think=True)
+    thinking = ""
+    response = ""
     for chunk in stream:
-        partial += chunk.message.content or ""
-        yield partial
+        thinking += chunk.message.thinking or ""
+        response += chunk.message.content or ""
+        yield _format_response(thinking, response)
 
 
 # ---------------------------------------------------------------------------
@@ -116,6 +126,7 @@ with gr.Blocks(title="Ask Gemma", fill_height=True) as demo:
             height=500,
             show_label=False,
             placeholder="Ask me anything — I know where and when you are.",
+            render_markdown=True,
         ),
         textbox=gr.MultimodalTextbox(
             placeholder="Type your message or attach files…",
