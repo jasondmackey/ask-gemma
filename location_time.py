@@ -7,15 +7,26 @@ No API key required.
 Usage:
     python3 location_time.py
     ./location_time.py
+
+Environment variables:
+    LOCATION_OVERRIDE   Override the city displayed (IP geolocation is ISP-level).
+                        e.g.  LOCATION_OVERRIDE="Superior, Colorado, USA" ./location_time.py
 """
 
 import json
+import os
 import ssl
 import urllib.request
 from datetime import datetime, timezone as dt_timezone
 from zoneinfo import ZoneInfo, available_timezones
 
 import certifi
+
+# Optional: set this env var to override the city returned by IP geolocation.
+# IP geolocation resolves to the ISP routing node (e.g. Denver) rather than
+# your actual city (e.g. Superior, Colorado).
+# e.g.  export LOCATION_OVERRIDE="Superior, Colorado, USA"
+LOCATION_OVERRIDE = os.environ.get("LOCATION_OVERRIDE", "").strip()
 
 _SSL = ssl.create_default_context(cafile=certifi.where())
 
@@ -112,8 +123,12 @@ def display_info(location: dict, time_info: dict) -> None:
     """Display formatted location and time information."""
     print(f"\n📍 Location Information")
     print(f"   City:       {location['city']}")
-    print(f"   Region:     {location['region']}")
-    print(f"   Country:    {location['country']} ({location['country_code']})")
+    if location.get("region"):
+        print(f"   Region:     {location['region']}")
+    if location.get("country"):
+        code = location.get("country_code", "")
+        country_str = f"{location['country']} ({code})" if code else location['country']
+        print(f"   Country:    {country_str}")
     print(f"   Timezone:   {location['timezone']}")
     print(f"   ISP:        {location['isp']}")
 
@@ -130,6 +145,11 @@ def main():
 
     location = get_location()
     if location:
+        if LOCATION_OVERRIDE:
+            location["city"] = LOCATION_OVERRIDE
+            location["region"] = ""
+            location["country"] = ""
+            location["country_code"] = ""
         time_info = get_time_info(location["timezone"])
         display_info(location, time_info)
     else:
